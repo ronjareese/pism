@@ -212,7 +212,9 @@ void SSA::compute_driving_stress(const Geometry &geometry, IceModelVec2V &result
 
   bool cfbc = m_config->get_boolean("stress_balance.calving_front_stress_bc");
   bool compute_surf_grad_inward_ssa = m_config->get_boolean("stress_balance.ssa.compute_surface_gradient_inward");
-  bool use_eta = (m_config->get_string("stress_balance.sia.surface_gradient_method") == "eta");
+  const std::string method = m_config->get_string("stress_balance.sia.surface_gradient_method");
+  
+  double vrho = (1.0-m_config->get_double("constants.sea_water.density")/m_config->get_double("constants.ice.density"));
 
   IceModelVec::AccessList list{&surface, &bed, &m_mask, &thk, &result};
 
@@ -226,7 +228,7 @@ void SSA::compute_driving_stress(const Geometry &geometry, IceModelVec2V &result
     } else {
       double h_x = 0.0, h_y = 0.0;
       // FIXME: we need to handle grid periodicity correctly.
-      if (m_mask.grounded(i,j) && (use_eta == true)) {
+      if (m_mask.grounded(i,j) && (method == "eta")) {
         // in grounded case, differentiate eta = H^{8/3} by chain rule
         if (thk(i,j) > 0.0) {
           const double myH = (thk(i,j) < minThickEtaTransform ?
@@ -262,7 +264,7 @@ void SSA::compute_driving_stress(const Geometry &geometry, IceModelVec2V &result
           // The y derivative is handled the same way.
 
           // x-derivative
-          {
+          { 
             double west = 1, east = 1;
             if ((m_mask.grounded(i,j) && m_mask.floating_ice(i+1,j)) ||
                 (m_mask.floating_ice(i,j) && m_mask.grounded(i+1,j)) ||
@@ -277,23 +279,129 @@ void SSA::compute_driving_stress(const Geometry &geometry, IceModelVec2V &result
 
             // This driving stress computation has to match the calving front
             // stress boundary condition in SSAFD::assemble_rhs().
+            bool margin_cell = false; //FIXME do we want to apply centered differences only with cfbc?
             if (cfbc) {
               if (m_mask.icy(i,j) && m_mask.ice_free(i+1,j)) {
                 east = 0;
+                margin_cell = true;
               }
               if (m_mask.icy(i,j) && m_mask.ice_free(i-1,j)) {
                 west = 0;
+                margin_cell = true;
               }
             }
 
             if (east + west > 0) {
+              
               h_x = 1.0 / (west + east) * (west * surface.diff_x_stagE(i-1,j) +
                                            east * surface.diff_x_stagE(i,j));
+
+
+              // replace with centerd difference at margins, use values in virtual cells 
+              if ( margin_cell && (method == "IF_centered" || method == "GL_centered" || method == "GL_centered_split" || method == "GL_centered_splitv2" || method == "GL_centered_splitv3")) { 
+                h_x = 1.0 / 2.0         * (west * surface.diff_x_stagE(i-1,j) +
+                                           east * surface.diff_x_stagE(i,j)); 
+                //if (j==1) 
+                //  m_log->message(2,"!!!!! IF or GL centered gradient with hi-1=%f, hi=%f, hi+1=%f, hx=%f at %d,%d\n",surface(i-1,j),surface(i,j),surface(i+1,j),h_x,i,j);
+              }
+
+              // replace with centerd difference at grounding lines
+              if ( method == "GL_centered" && margin_cell==false && east+west < 2 ){ 
+                h_x = 1.0 / 2.0         * ( surface.diff_x_stagE(i-1,j) +
+                                            surface.diff_x_stagE(i,j)); 
+                //if (j==1) 
+                //  m_log->message(2,"!!!!! GL centered gradient with hi-1=%f, hi=%f, hi+1=%f, hx=%f at %d,%d\n",surface(i-1,j),surface(i,j),surface(i+1,j),h_x,i,j);
+              }
+
+
+              // replace with centerd difference at grounding lines, use flotation thickness in virtual cells 
+              if (method == "GL_centered_split" && margin_cell==false && east+west < 2 ){
+
+                if ((m_mask.grounded(i-1,j) && m_mask.floating_ice(i,j)) || (m_mask.grounded(i,j) && m_mask.floating_ice(i-1,j)) ) {
+                  double hg = vrho*(bed(i-1,j) + bed(i,j)) / 2.0;
+                  //h_x = (surface(i+1,j) - surface(i-1,j)) / (2.0 * dx);
+                  h_x = (surface(i+1,j) - hg) / (2.0 * dx);
+                  //if (j==1)
+                  //  m_log->message(2,
+                  //  "!!!!! GL split: hf=%f, hi-1=%f, hi=%f, hi+1=%f ,hx=%f,hxe=%f at %d,%d\n", hg,surface(i-1,j),surface(i,j),surface(i+1,j),h_x,(surface(i+1,j) - surface(i,j))/dx,i,j);
+                }
+                if ((m_mask.grounded(i+1,j) && m_mask.floating_ice(i,j)) || (m_mask.grounded(i,j) && m_mask.floating_ice(i+1,j)) ) {
+                  double hg = vrho*(bed(i+1,j) + bed(i,j)) / 2.0;
+                  h_x = ( hg - surface(i-1,j)) / (2.0 * dx); 
+                  //if (j==1)
+                  //  m_log->message(2,
+                  //  "!!!!! GL split: hf=%f, hi+1=%f, hi=%f, hi-1=%f, hx=%f, hxe=%f at %d,%d\n", hg,surface(i+1,j),surface(i,j),surface(i-1,j),h_x,(surface(i,j) - surface(i-1,j))/dx,i,j);
+                }   
+              }
+              // replace with centerd difference at grounding lines, use flotation thickness in virtual cells, here floatation in neighboring cell 
+              // FIXME exclude case when grounded cell is above sea-level!
+              if (method == "GL_centered_splitv2" && margin_cell==false && east+west < 2 ){
+
+                if ((m_mask.grounded(i-1,j) && m_mask.floating_ice(i,j)) || (m_mask.grounded(i,j) && m_mask.floating_ice(i-1,j)) ) {
+                  double hg = vrho*(bed(i-1,j)); // floatation thickness in i-1
+                  //h_x = (surface(i+1,j) - surface(i-1,j)) / (2.0 * dx);
+                  h_x = (surface(i+1,j) - hg) / (2.0 * dx);
+                  //if (j==1)
+                  //  m_log->message(2,
+                  //  "!!!!! GL split: hf=%f, hi-1=%f, hi=%f, hi+1=%f ,hx=%f,hxe=%f at %d,%d\n", hg,surface(i-1,j),surface(i,j),surface(i+1,j),h_x,(surface(i+1,j) - surface(i,j))/dx,i,j);
+                }
+                if ((m_mask.grounded(i+1,j) && m_mask.floating_ice(i,j)) || (m_mask.grounded(i,j) && m_mask.floating_ice(i+1,j)) ) {
+                  double hg = vrho*(bed(i+1,j)); // flotation thickness in i+1
+                  h_x = ( hg - surface(i-1,j)) / (2.0 * dx); 
+                  //if (j==1)
+                  //  m_log->message(2,
+                  //  "!!!!! GL split: hf=%f, hi+1=%f, hi=%f, hi-1=%f, hx=%f, hxe=%f at %d,%d\n", hg,surface(i+1,j),surface(i,j),surface(i-1,j),h_x,(surface(i,j) - surface(i-1,j))/dx,i,j);
+                }   
+              }
+              // replace with centerd difference at grounding lines, copy thickness of last floating / grounded cell
+              if (method == "GL_centered_splitv3" && margin_cell==false && east+west < 2 ){
+
+                if ((m_mask.grounded(i-1,j) && m_mask.floating_ice(i,j)) || (m_mask.grounded(i,j) && m_mask.floating_ice(i-1,j)) ) {
+                  h_x = (surface(i+1,j) - surface(i,j)) / (2.0 * dx);
+                }
+                if ((m_mask.grounded(i+1,j) && m_mask.floating_ice(i,j)) || (m_mask.grounded(i,j) && m_mask.floating_ice(i+1,j)) ) {
+                  h_x = ( surface(i,j) - surface(i-1,j)) / (2.0 * dx); 
+                }   
+              }
+              // OLD CODE, testing a different scheme at the GL which does not work well for perturbations one cell downstream..
+              /*if (use_gl_centered && )
+                // Floating case
+                if ((m_mask.grounded(i-1,j) && m_mask.floating_ice(i,j))) {
+                  double hg = vrho*(bed(i-1,j) + bed(i,j)) / 2.0;
+                  //h_x = (surface(i+1,j) - surface(i-1,j)) / (2.0 * dx);
+                  h_x = (surface(i+1,j) + surface(i,j) - 2.0 * hg) / (2.0 * dx);
+                  if (j==1)
+                    m_log->message(2,
+                    "!!!!!floating hf=%f, hi-1=%f, hi=%f, hx=%f, hxe=%f at %d,%d\n", hg,surface(i-1,j),surface(i,j),h_x,(surface(i+1,j) - surface(i,j))/dx,i,j);
+                }
+                if ((m_mask.grounded(i+1,j) && m_mask.floating_ice(i,j))) {
+                  double hg = vrho*(bed(i+1,j) + bed(i,j)) / 2.0;
+                  h_x = (- surface(i,j) - surface(i-1,j) + 2.0 * hg) / (2.0 * dx); 
+                  if (j==1)
+                    m_log->message(2,
+                    "!!!!!floating hf=%f, hi+1=%f, hi=%f, hx=%f, hxe=%f at %d,%d\n", hg,surface(i+1,j),surface(i,j),h_x,(surface(i,j) - surface(i-1,j))/dx,i,j);
+                }   
+                // Grounded case
+                if ((m_mask.grounded(i,j) && m_mask.floating_ice(i+1,j))) {
+                  double hg = vrho*(bed(i+1,j) + bed(i,j)) / 2.0; // across the GL
+                  h_x = (2.0 * hg - surface(i,j) - surface(i-1,j) ) / (2.0 * dx);
+                  if (j==1)
+                    m_log->message(2,
+                    "!!!!!grounded hf=%f, hi+1=%f, hi=%f, hx=%f, hxe=%f at %d,%d\n", hg,surface(i+1,j),surface(i,j),h_x,(surface(i,j) - surface(i-1,j))/dx,i,j);
+                }      
+                if ((m_mask.grounded(i,j) && m_mask.floating_ice(i-1,j))) {
+                  double hg = vrho*(bed(i-1,j) + bed(i,j)) / 2.0; // across the GL
+                  h_x = (surface(i,j) + surface(i+1,j) - 2.0 * hg) / (2.0 * dx);
+                  if (j==1)
+                    m_log->message(2,
+                    "!!!!!grounded hf=%f, hi-1=%f, hi=%f, hx=%f, hxe=%f at %d,%d\n", hg,surface(i-1,j),surface(i,j),h_x,(surface(i+1,j) - surface(i,j))/dx,i,j);
+                }*/              
             } else {
               h_x = 0.0;
             }
+        
           }
-
+          
           // y-derivative
           {
             double south = 1, north = 1;
@@ -310,18 +418,71 @@ void SSA::compute_driving_stress(const Geometry &geometry, IceModelVec2V &result
 
             // This driving stress computation has to match the calving front
             // stress boundary condition in SSAFD::assemble_rhs().
+            bool margin_cell = false;
             if (cfbc) {
               if (m_mask.icy(i,j) && m_mask.ice_free(i,j+1)) {
                 north = 0;
+                margin_cell = true;
               }
               if (m_mask.icy(i,j) && m_mask.ice_free(i,j-1)) {
                 south = 0;
+                margin_cell = true;
               }
             }
 
+            
             if (north + south > 0) {
               h_y = 1.0 / (south + north) * (south * surface.diff_y_stagN(i,j-1) +
                                              north * surface.diff_y_stagN(i,j));
+
+              // replace with centerd difference at margins, use values in virtual cells 
+              if ( margin_cell && (method == "IF_centered" || method == "GL_centered" || method == "GL_centered_split" )) { 
+                h_y = 1.0 / 2.0          * (south * surface.diff_y_stagN(i,j-1) +
+                                            north * surface.diff_y_stagN(i,j));
+              }
+
+              // replace with centerd difference at grounding lines
+              if ( method == "GL_centered" && margin_cell==false && north+south < 2 ){ 
+                h_y = 1.0 / 2.0         * ( surface.diff_y_stagN(i,j-1) +
+                                            surface.diff_y_stagN(i,j));
+              }
+
+              // replace with centerd difference at grounding lines, use flotation thickness in virtual cells 
+              if (method == "GL_centered_split" && margin_cell==false && north+south < 2 ){
+                // Floating case
+                if ((m_mask.grounded(i,j+1) && m_mask.floating_ice(i,j)) || (m_mask.grounded(i,j) && m_mask.floating_ice(i,j+1))) {
+                  double hg = vrho*(bed(i,j) + bed(i,j+1)) / 2.0;
+                  h_y = (hg - surface(i,j-1)) / (2.0 * dy);
+                }
+                if ((m_mask.grounded(i,j-1) && m_mask.floating_ice(i,j)) || (m_mask.grounded(i,j) && m_mask.floating_ice(i,j-1))) {
+                  double hg = vrho*(bed(i,j-1) + bed(i,j)) / 2.0;
+                  h_x = ( surface(i,j+1) - hg ) / (2.0 * dy); 
+                }   
+              }  
+
+              // replace with centerd difference at grounding lines, use flotation thickness in virtual cells, floatation thickness in neighboring cell
+              if (method == "GL_centered_splitv2" && margin_cell==false && north+south < 2 ){
+                // Floating case
+                if ((m_mask.grounded(i,j+1) && m_mask.floating_ice(i,j)) || (m_mask.grounded(i,j) && m_mask.floating_ice(i,j+1))) {
+                  double hg = vrho*bed(i,j+1);
+                  h_y = (hg - surface(i,j-1)) / (2.0 * dy);
+                }
+                if ((m_mask.grounded(i,j-1) && m_mask.floating_ice(i,j)) || (m_mask.grounded(i,j) && m_mask.floating_ice(i,j-1))) {
+                  double hg = vrho*bed(i-1,j);
+                  h_y = ( surface(i,j+1) - hg ) / (2.0 * dy); 
+                }   
+              } 
+              // replace with centerd difference at grounding lines, use thickness of last grounded / floating cell
+              if (method == "GL_centered_splitv3" && margin_cell==false && north+south < 2 ){
+                // Floating case
+                if ((m_mask.grounded(i,j+1) && m_mask.floating_ice(i,j)) || (m_mask.grounded(i,j) && m_mask.floating_ice(i,j+1))) {
+                  h_y = (surface(i,j) - surface(i,j-1)) / (2.0 * dy);
+                }
+                if ((m_mask.grounded(i,j-1) && m_mask.floating_ice(i,j)) || (m_mask.grounded(i,j) && m_mask.floating_ice(i,j-1))) {
+                  h_y = ( surface(i,j+1) - surface(i,j) ) / (2.0 * dy); 
+                }   
+              } 
+
             } else {
               h_y = 0.0;
             }
