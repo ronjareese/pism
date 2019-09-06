@@ -94,6 +94,7 @@ void IceModel::combine_basal_melt_rate(const Geometry &geometry,
 
   const bool sub_gl = (m_config->get_boolean("geometry.grounded_cell_fraction") and
                        m_config->get_boolean("energy.basal_melt.use_grounded_cell_fraction"));
+  const bool no_melting_in_first_floating_cell = m_config->get_boolean("energy.basal_melt.no_melting_first_floating_cell");
 
   IceModelVec::AccessList list{&geometry.cell_type,
       &grounded_basal_melt_rate, &shelf_base_mass_flux, &result};
@@ -119,6 +120,13 @@ void IceModel::combine_basal_melt_rate(const Geometry &geometry,
       lambda = 0.0;
     }
     result(i,j) = lambda * grounded_basal_melt_rate(i, j) + (1.0 - lambda) * M_shelf_base;
+    // no melting in first floating cell
+    if ( no_melting_in_first_floating_cell &&  geometry.cell_type.floating_ice(i,j)  && 
+                                     ( geometry.cell_type.grounded(i+1,j) || geometry.cell_type.grounded(i-1,j) || 
+                                       geometry.cell_type.grounded(i,j+1) || geometry.cell_type.grounded(i,j-1) )  ) {
+      result(i,j) = 0.0;  
+    } 
+
   }
 }
 

@@ -456,7 +456,7 @@ void SSA::compute_driving_stress(const Geometry &geometry, IceModelVec2V &result
                 }
                 if ((m_mask.grounded(i,j-1) && m_mask.floating_ice(i,j)) || (m_mask.grounded(i,j) && m_mask.floating_ice(i,j-1))) {
                   double hg = vrho*(bed(i,j-1) + bed(i,j)) / 2.0;
-                  h_x = ( surface(i,j+1) - hg ) / (2.0 * dy); 
+                  h_y = ( surface(i,j+1) - hg ) / (2.0 * dy); 
                 }   
               }  
 

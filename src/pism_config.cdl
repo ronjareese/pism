@@ -527,6 +527,11 @@ netcdf pism_config {
     pism_config:energy.basal_melt.use_grounded_cell_fraction_option  = "subgl_basal_melt";
     pism_config:energy.basal_melt.use_grounded_cell_fraction_type  = "boolean";
 
+    pism_config:energy.basal_melt.no_melting_first_floating_cell  = "true";
+    pism_config:energy.basal_melt.no_melting_first_floating_cell_doc = "Do not apply basal melt rates in first floating cell (four neighbors) ";
+    pism_config:energy.basal_melt.no_melting_first_floating_cell_option  = "ex_first_bmelt";
+    pism_config:energy.basal_melt.no_melting_first_floating_cell_type  = "boolean";
+
     pism_config:energy.bedrock_thermal.file = "";
     pism_config:energy.bedrock_thermal.file_doc = "Name of the file containing the geothermal flux field `bheatflx`. Leave empty to read it from the `input.file`.";
     pism_config:energy.bedrock_thermal.file_type = "string";
