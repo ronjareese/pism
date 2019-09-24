@@ -215,6 +215,7 @@ void SSA::compute_driving_stress(const Geometry &geometry, IceModelVec2V &result
   const std::string method = m_config->get_string("stress_balance.sia.surface_gradient_method");
   
   double vrho = (1.0-m_config->get_double("constants.sea_water.density")/m_config->get_double("constants.ice.density"));
+  double delta = (1.0-m_config->get_double("constants.ice.density")/m_config->get_double("constants.sea_water.density"));
 
   IceModelVec::AccessList list{&surface, &bed, &m_mask, &thk, &result};
 
@@ -298,7 +299,9 @@ void SSA::compute_driving_stress(const Geometry &geometry, IceModelVec2V &result
 
 
               // replace with centerd difference at margins, use values in virtual cells 
-              if ( margin_cell && (method == "IF_centered" || method == "GL_centered" || method == "GL_centered_split" || method == "GL_centered_splitv2" || method == "GL_centered_splitv3")) { 
+              if ( margin_cell && (method == "IF_centered" || method == "GL_centered" || method == "GL_centered_split" || 
+                                   method == "GL_centered_splitv2" || method == "GL_centered_splitv3" || 
+                                   method == "GL_thk" )) { 
                 h_x = 1.0 / 2.0         * (west * surface.diff_x_stagE(i-1,j) +
                                            east * surface.diff_x_stagE(i,j)); 
                 //if (j==1) 
@@ -363,6 +366,28 @@ void SSA::compute_driving_stress(const Geometry &geometry, IceModelVec2V &result
                   h_x = ( surface(i,j) - surface(i-1,j)) / (2.0 * dx); 
                 }   
               }
+
+              if (method == "GL_thk" && margin_cell==false && east+west < 2 ){
+                // make use of continuous thickness gradient at GL 
+                // transform into surface gradient using flotation criterion (if floating) and bed gradient (if grounded)
+                double h_x_haseloff = h_x;
+                if (m_mask.grounded(i,j)){
+                  h_x = (thk(i+1,j) - thk(i-1,j)) / (2.0 * dx) + (bed(i+1,j) - bed(i-1,j)) / (2.0 * dx);
+                  if (j==1)
+                    m_log->message(2,
+                    "!!!!! GL thk, grounded: hi+1=%f, hi-1=%f, bi-1=%f, bi+1=%f, hx=%f, hx_centered=%f, hx_haseloff=%f at %d,%d\n", 
+                    thk(i+1,j),thk(i-1,j),bed(i+1,j),bed(i,j),h_x,(surface(i+1,j) - surface(i-1,j))/(2*dx),h_x_haseloff,i,j);
+                
+                }
+                if (m_mask.floating_ice(i,j)){
+                  h_x = delta * (thk(i+1,j) - thk(i-1,j)) / (2.0 * dx); // assuming that d_x of sea-level is 0, otherwise add dS/dx
+                  if (j==1)
+                    m_log->message(2,
+                    "!!!!! GL thk, floating: hi+1=%f, hi-1=%f, bi-1=%f, bi+1=%f, hx=%f, hx_centered=%f, hx_haseloff=%f at %d,%d\n", 
+                    thk(i+1,j),thk(i-1,j),bed(i+1,j),bed(i,j),h_x,(surface(i+1,j) - surface(i-1,j))/(2*dx),h_x_haseloff,i,j);
+                }
+              }
+
               // OLD CODE, testing a different scheme at the GL which does not work well for perturbations one cell downstream..
               /*if (use_gl_centered && )
                 // Floating case
@@ -436,7 +461,9 @@ void SSA::compute_driving_stress(const Geometry &geometry, IceModelVec2V &result
                                              north * surface.diff_y_stagN(i,j));
 
               // replace with centerd difference at margins, use values in virtual cells 
-              if ( margin_cell && (method == "IF_centered" || method == "GL_centered" || method == "GL_centered_split" )) { 
+              if ( margin_cell && (method == "IF_centered" || method == "GL_centered" || method == "GL_centered_split" || 
+                                   method == "GL_centered_splitv2" || method == "GL_centered_splitv3" || 
+                                   method == "GL_thk" )) { 
                 h_y = 1.0 / 2.0          * (south * surface.diff_y_stagN(i,j-1) +
                                             north * surface.diff_y_stagN(i,j));
               }
@@ -482,6 +509,17 @@ void SSA::compute_driving_stress(const Geometry &geometry, IceModelVec2V &result
                   h_y = ( surface(i,j+1) - surface(i,j) ) / (2.0 * dy); 
                 }   
               } 
+
+              if (method == "GL_thk" && margin_cell==false && north+south < 2 ){
+                // make use of continuous thickness gradient at GL 
+                // transform into surface gradient using flotation criterion (if floating) and bed gradient (if grounded)
+                if (m_mask.grounded(i,j)){
+                  h_y = (thk(i,j+1) - thk(i,j-1)) / (2.0 * dy) + (bed(i,j+1) - bed(i,j-1)) / (2.0 * dy);
+                }
+                if (m_mask.floating_ice(i,j)){
+                  h_y = delta * (thk(i,j+1) - thk(i,j-1)) / (2.0 * dy); // assuming that d_y of sea-level is 0, otherwise add dS/dy
+                }
+              }
 
             } else {
               h_y = 0.0;

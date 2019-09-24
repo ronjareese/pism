@@ -210,7 +210,9 @@ void SIAFD::compute_surface_gradient(const Inputs &inputs,
 
     surface_gradient_eta(inputs, h_x, h_y);
 
-  } else if (method == "haseloff" || method == "IF_centered" || method == "GL_centered" || method == "GL_centered_split" || method == "GL_centered_splitv2"  || method == "GL_centered_splitv3") {
+  } else if (method == "haseloff" || method == "IF_centered" || method == "GL_centered" || 
+             method == "GL_centered_split" || method == "GL_centered_splitv2"  || 
+             method == "GL_centered_splitv3" || method == "GL_thk") {
 
     surface_gradient_haseloff(inputs, h_x, h_y);
 
