@@ -272,6 +272,7 @@ void SSAFD::assemble_rhs(const Inputs &inputs) {
 
   compute_driving_stress(inputs.geometry->ice_thickness,
                          inputs.geometry->ice_surface_elevation,
+                         inputs.geometry->bed_elevation,
                          m_mask,
                          inputs.no_model_mask,
                          m_taud);

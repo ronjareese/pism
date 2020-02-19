@@ -2117,6 +2117,12 @@ netcdf pism_config {
     pism_config:stress_balance.sia.surface_gradient_method_option = "gradient";
     pism_config:stress_balance.sia.surface_gradient_method_type = "keyword";
 
+    pism_config:stress_balance.ssa.surface_gradient_method = "one_sided";
+    pism_config:stress_balance.ssa.surface_gradient_method_choices = "one_sided,GL_one_sided,GL_centered_thk,GL_centered_surf";
+    pism_config:stress_balance.ssa.surface_gradient_method_doc = "method used for surface gradient calculation in SSA at margins and grounding lines (otherwise centered differences are used)";
+    pism_config:stress_balance.ssa.surface_gradient_method_option = "ssa_gradient";
+    pism_config:stress_balance.ssa.surface_gradient_method_type = "keyword";
+
     pism_config:stress_balance.ssa.Glen_exponent = 3.0;
     pism_config:stress_balance.ssa.Glen_exponent_doc = "Glen exponent in ice flow law for SSA";
     pism_config:stress_balance.ssa.Glen_exponent_option = "ssa_n";

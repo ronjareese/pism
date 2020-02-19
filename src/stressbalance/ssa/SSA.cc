@@ -234,6 +234,40 @@ static int weight(bool margin_bc,
   return 1;
 }
 
+/*!
+ * Determine if the location `n` from `i,j' is a margin (ice-free) or grounding line
+ * margin = 1
+ * grounding line = 2
+ * other = 0
+ */
+
+static int margin(int M_ij, int M_n,
+                  int N_ij, int N_n) {
+  using mask::grounded;
+  using mask::icy;
+  using mask::floating_ice;
+  using mask::ice_free;
+  using mask::ice_free_ocean;
+
+  // grounding lines 
+  if ((grounded(M_ij) and icy(M_ij) and floating_ice(M_n)) or
+      (floating_ice(M_ij) and grounded(M_n) and icy(M_n) )) {
+	return 2;
+  } 
+  // ice margin, ocean or bedrock
+  if (icy(M_ij) and ice_free(M_n)) {
+    return 1;
+  }
+
+  // boundaries of the "no model" area
+  if ((N_ij == 0 and N_n == 1) or (N_ij == 1 and N_n == 0)) {
+    return 1;
+  }
+
+  return 0;
+}
+
+
 //! \brief Compute the gravitational driving stress.
 /*!
 Computes the gravitational driving stress at the base of the ice:
@@ -249,18 +283,22 @@ give a lower driving stress. The transformation is not used in floating ice.
  */
 void SSA::compute_driving_stress(const IceModelVec2S &ice_thickness,
                                  const IceModelVec2S &surface_elevation,
-                                 const IceModelVec2CellType &cell_type,
+                                 const IceModelVec2S &bed_elevation,
+				 const IceModelVec2CellType &cell_type,
                                  const IceModelVec2Int *no_model_mask,
                                  IceModelVec2V &result) const {
+  using mask::grounded;
+  using mask::floating_ice;
 
   bool cfbc = m_config->get_flag("stress_balance.calving_front_stress_bc");
   bool surface_gradient_inward = m_config->get_flag("stress_balance.ssa.compute_surface_gradient_inward");
+  const std::string method = m_config->get_string("stress_balance.ssa.surface_gradient_method");
 
   double
     dx = m_grid->dx(),
     dy = m_grid->dy();
 
-  IceModelVec::AccessList list{&surface_elevation, &cell_type, &ice_thickness, &result};
+  IceModelVec::AccessList list{&surface_elevation, &cell_type, &ice_thickness, &bed_elevation, &result};
 
   if (no_model_mask) {
     list.add(*no_model_mask);
@@ -274,6 +312,9 @@ void SSA::compute_driving_stress(const IceModelVec2S &ice_thickness,
       result(i, j) = 0.0;
       continue;
     }
+
+  double delta = (1.0-m_config->get_number("constants.ice.density")/m_config->get_number("constants.sea_water.density"));
+
 
     // Special case for verification tests.
     if (surface_gradient_inward) {
@@ -303,6 +344,9 @@ void SSA::compute_driving_stress(const IceModelVec2S &ice_thickness,
 
     auto M = cell_type.int_star(i, j);
     auto h = surface_elevation.star(i, j);
+    auto H = ice_thickness.star(i ,j);
+    auto b = bed_elevation.star(i, j);
+
     StarStencil<int> N(0);
 
     if (no_model_mask) {
@@ -314,12 +358,55 @@ void SSA::compute_driving_stress(const IceModelVec2S &ice_thickness,
     {
       double
         west = weight(cfbc, M.ij, M.w, h.ij, h.w, N.ij, N.w),
-        east = weight(cfbc, M.ij, M.e, h.ij, h.e, N.ij, N.e);
+        east = weight(cfbc, M.ij, M.e, h.ij, h.e, N.ij, N.e),
+	margin_w = margin(M.ij, M.w, N.ij, N.w),
+	margin_e = margin(M.ij, M.e, N.ij, N.e);
 
-      if (east + west > 0) {
+      if (east + west > 0) { 
+	// standard method, one-sided at GL and IF        
         h_x = 1.0 / ((west + east) * dx) * (west * (h.ij - h.w) + east * (h.e - h.ij));
+	
+	// replace the gradient:
+	// -> at the ice front for any other method than standard
+	if ( method!="one_sided" and (margin_w==1 or margin_e==1) ) {
+	  h_x = 1.0 / (2.0 * dx) * (west * (h.ij - h.w) + east * (h.e - h.ij));
+	}
+	// -> at the grounding line for GL_centered_surf with centered differences
+	if ((method=="GL_centered_surf") and (margin_w==2 or margin_e==2 )){
+	  west = 1;
+	  east = 1;
+	  h_x = 1.0 / ((west + east) * dx) * (west * (h.ij - h.w) + east * (h.e - h.ij));
+	}
+	// -> at the grounding line for GL_centered_thk
+        if ((method=="GL_centered_thk") and (margin_w==2 or margin_e==2 )){
+          west = 1;
+          east = 1;
+	  if (floating_ice(M.ij)) { h_x = 1.0 / (2.0 * dx) * delta * ( H.e - H.w ); }
+          // note that b is defined positive in PISM
+	  if (grounded(M.ij)) { h_x = 1.0 / (2.0 * dx) * ( (H.e - H.w) + (b.e - b.w));}
+        }
+
       } else {
         h_x = 0.0;
+        // if gradient other than one_sided, GL_one_sided this is only applied if both neighbors are ice_free
+	// otherwise, the grounding line method or calving front method can be applied
+	// FIXME check this code
+	if ((method=="GL_centered_surf") and (margin_w==2 or margin_e==2 )){ // one of the neighbors is grounding line
+	  if (margin_w==2){west=1;}
+	  if (margin_e==2){east=1;}
+	  h_x = 1.0 / ( 2 * dx) * (west * (h.ij - h.w) + east * (h.e - h.ij));
+	}
+        if ((method=="GL_centered_thk") and (margin_w==2 or margin_e==2 )){ // one of the neighbors is grounding line
+          if (margin_w==2){west=1;}
+          if (margin_e==2){east=1;}
+
+          if (floating_ice(M.ij)) { 
+		h_x = 1.0 / (2.0 * dx) * delta * ( west*(H.ij - H.w) + east*( H.e - H.ij) ); 
+	  } 
+          if (grounded(M.ij)) { 
+	        h_x = 1.0 / (2.0 * dx) * ( west* (H.ij - H.w + b.ij - b.w) + east* (H.e - H.ij + b.e - b.ij));
+	  } 
+        }
       }
     }
 
@@ -328,12 +415,56 @@ void SSA::compute_driving_stress(const IceModelVec2S &ice_thickness,
     {
       double
         south = weight(cfbc, M.ij, M.s, h.ij, h.s, N.ij, N.s),
-        north = weight(cfbc, M.ij, M.n, h.ij, h.n, N.ij, N.n);
+        north = weight(cfbc, M.ij, M.n, h.ij, h.n, N.ij, N.n),
+        margin_s = margin(M.ij, M.s, N.ij, N.s),
+        margin_n = margin(M.ij, M.n, N.ij, N.n);
 
       if (north + south > 0) {
+        // standard method, one-sided at GL and IF  
         h_y = 1.0 / ((south + north) * dy) * (south * (h.ij - h.s) + north * (h.n - h.ij));
+
+        // replace the gradient:
+        // -> at the ice front for any other method than standard
+        if ( method!="one_sided" and (margin_s==1 or margin_n==1) ) {
+          h_y = 1.0 / (2.0 * dy) * (south * (h.ij - h.s) + north * (h.n - h.ij));
+        }
+        // -> at the grounding line for GL_centered_surf with centered differences
+        if ((method=="GL_centered_surf") and (margin_s==2 or margin_n==2 )){
+          south = 1;
+          north = 1;
+          h_y = 1.0 / ((south + north) * dy) * (south * (h.ij - h.s) + north * (h.n - h.ij));
+        }
+        // -> at the grounding line for GL_centered_thk
+        if ((method=="GL_centered_thk") and (margin_s==2 or margin_n==2 )){
+          south = 1;
+          north = 1;
+          if (floating_ice(M.ij)) { h_y = 1.0 / (2.0 * dy) * delta * ( H.n - H.s ); }
+          // note that b is defined positive in PISM
+          if (grounded(M.ij)) { h_y = 1.0 / (2.0 * dy) * ( (H.n - H.s) + (b.n - b.s));}
+        }
+
       } else {
         h_y = 0.0;
+        // if gradient other than one_sided, GL_one_sided this is only applied if both neighbors are ice_free
+        // otherwise, the grounding line method or calving front method can be applied
+        // FIXME check this code
+        if ((method=="GL_centered_surf") and (margin_s==2 or margin_n==2 )){ // one of the neighbors is grounding line
+          if (margin_s==2){south=1;}
+          if (margin_n==2){north=1;}
+          h_y = 1.0 / ( 2 * dy) * (south * (h.ij - h.s) + north * (h.n - h.ij));
+        }
+        if ((method=="GL_centered_thk") and (margin_s==2 or margin_n==2 )){ // one of the neighbors is grounding line
+          if (margin_s==2){south=1;}
+          if (margin_n==2){north=1;}
+
+          if (floating_ice(M.ij)) {
+                h_y = 1.0 / (2.0 * dy) * delta * ( south*(H.ij - H.s) + north*( H.n - H.ij) );
+          }
+          if (grounded(M.ij)) {
+                h_y = 1.0 / (2.0 * dy) * ( south* (H.ij - H.s + b.ij - b.s) + north* (H.n - H.ij + b.n - b.ij));
+          }
+        }
+  
       }
     }
 
