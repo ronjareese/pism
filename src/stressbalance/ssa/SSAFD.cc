@@ -693,9 +693,78 @@ void SSAFD::assemble_matrix(const Inputs &inputs,
       }     // end of "if (use_cfbc)"
 
       /* begin Maxima-generated code */
-      const double dx2 = dx*dx, dy2 = dy*dy, d4 = 4*dx*dy, d2 = 2*dx*dy;
+      const double dx2 = dx*dx, dy2 = dy*dy, d4 = 4*dx*dy, d2 = 2*dx*dy, dxy=dx*dy;
+      double dNSWNWWSW = (N + S + WNW + WSW)*dxy;
+      double dNNEENNWW = (NNE + E + NNW + W)*dxy;
+      double dENEESENS = (ENE + ESE + N + S)*dxy;
+      double dESSEWSSW = (E + SSE + W + SSW)*dxy;
+      // Do not divide by 0, will be set to 0 anyways
+      if (dNSWNWWSW==0.0) {dNSWNWWSW=dxy;}
+      if (dNNEENNWW==0.0) {dNNEENNWW=dxy;}
+      if (dENEESENS==0.0) {dENEESENS=dxy;}
+      if (dESSEWSSW==0.0) {dESSEWSSW=dxy;}
 
-      /* Coefficients of the discretization of the first equation; u first, then v. */
+      if ((j==58 and i==89) or (i==58 and j==89)){
+	m_log->message(2,
+        "!!!!!UPPER RIGHT CORNER: dxy=%f, dNSWNWWSW=%f, dNNWWNNWW=%f, dENEESENS=%f, dESSEWSSW=%f at %d,%d\n", dxy,dNSWNWWSW,dNNEENNWW,dENEESENS,dESSEWSSW,i,j);
+        m_log->message(2,
+        "!!!!!old terms, x: vi-1j+1=%f, vij+1=%f, vi+1j+1=%f, vi-1j=%f, vij=%f, vij+1=%f, vi-1j-1=%f, vij-1=%f, vi+1j-1=%f  at %d,%d\n", 
+	c_w*W*WNW/d2+c_n*NNW*N/d4, (c_n*NNE*N-c_n*NNW*N)/d4+(c_w*W*N-c_e*E*N)/d2,  -c_e*E*ENE/d2-c_n*NNE*N/d4,
+        (c_w*W*WSW-c_w*W*WNW)/d2+(c_n*W*N-c_s*W*S)/d4,  (c_n*E*N-c_n*W*N-c_s*E*S+c_s*W*S)/d4+(c_e*E*N-c_w*W*N-c_e*E*S+c_w*W*S)/d2,  (c_e*E*ENE-c_e*E*ESE)/d2+(c_s*E*S-c_n*E*N)/d4,
+        -c_w*W*WSW/d2-c_s*SSW*S/d4,  (c_s*SSW*S-c_s*SSE*S)/d4+(c_e*E*S-c_w*W*S)/d2,  c_e*E*ESE/d2+c_s*SSE*S/d4, i,j);
+        m_log->message(2,
+        "!!!!!new terms, x: vi-1j+1=%f, vij+1=%f, vi+1j+1=%f, vi-1j=%f, vij=%f, vij+1=%f, vi-1j-1=%f, vij-1=%f, vi+1j-1=%f  at %d,%d\n", 
+	 2*c_w*W*WNW/dNSWNWWSW+c_n*NNW*N/dNNEENNWW,  (c_n*NNE*N-c_n*NNW*N)/dNNEENNWW+2*c_w*W*N/dNSWNWWSW-2*c_e*E*N/dENEESENS,  -2*c_e*E*ENE/dENEESENS-c_n*NNE*N/dNNEENNWW,
+        (2*c_w*W*WSW-2*c_w*W*WNW)/dNSWNWWSW+c_n*W*N/dNNEENNWW-c_s*W*S/dESSEWSSW,  (c_n*E*N-c_n*W*N)/dNNEENNWW+(c_s*W*S-c_s*E*S)/dESSEWSSW+(2*c_e*E*N-2*c_e*E*S)/dENEESENS+(2*c_w*W*S-2*c_w*W*N)/dNSWNWWSW,  (2*c_e*E*ENE-2*c_e*E*ESE)/dENEESENS+c_s*E*S/dESSEWSSW-c_n*E*N/dNNEENNWW,
+        -2*c_w*W*WSW/dNSWNWWSW-c_s*SSW*S/dESSEWSSW,  (c_s*SSW*S-c_s*SSE*S)/dESSEWSSW+2*c_e*E*S/dENEESENS-2*c_w*W*S/dNSWNWWSW,  2*c_e*E*ESE/dENEESENS+c_s*SSE*S/dESSEWSSW,i,j);
+        m_log->message(2,
+        "!!!!!old terms, y: ui-1j+1=%f, uij+1=%f, ui+1j+1=%f, ui-1j=%f, uij=%f, uij+1=%f, ui-1j-1=%f, uij-1=%f, ui+1j-1=%f  at %d,%d\n",
+	 c_w*W*WNW/d4+c_n*NNW*N/d2,  (c_n*NNE*N-c_n*NNW*N)/d2+(c_w*W*N-c_e*E*N)/d4,  -c_e*E*ENE/d4-c_n*NNE*N/d2,
+        (c_w*W*WSW-c_w*W*WNW)/d4+(c_n*W*N-c_s*W*S)/d2,  (c_n*E*N-c_n*W*N-c_s*E*S+c_s*W*S)/d2+(c_e*E*N-c_w*W*N-c_e*E*S+c_w*W*S)/d4,  (c_e*E*ENE-c_e*E*ESE)/d4+(c_s*E*S-c_n*E*N)/d2,
+        -c_w*W*WSW/d4-c_s*SSW*S/d2,  (c_s*SSW*S-c_s*SSE*S)/d2+(c_e*E*S-c_w*W*S)/d4,  c_e*E*ESE/d4+c_s*SSE*S/d2,i,j);
+        m_log->message(2,
+        "!!!!!new terms, y: ui-1j+1=%f, uij+1=%f, ui+1j+1=%f, ui-1j=%f, uij=%f, uij+1=%f, ui-1j-1=%f, uij-1=%f, ui+1j-1=%f  at %d,%d\n",
+	 c_w*W*WNW/dNSWNWWSW+2*c_n*NNW*N/dNNEENNWW,  (2*c_n*NNE*N-2*c_n*NNW*N)/dNNEENNWW+c_w*W*N/dNSWNWWSW-c_e*E*N/dENEESENS,  -c_e*E*ENE/dENEESENS-2*c_n*NNE*N/dNNEENNWW,
+        (c_w*W*WSW-c_w*W*WNW)/dNSWNWWSW+2*c_n*W*N/dNNEENNWW-2*c_s*W*S/dESSEWSSW,  (2*c_n*E*N-2*c_n*W*N)/dNNEENNWW+(2*c_s*W*S-2*c_s*E*S)/dESSEWSSW+(c_e*E*N-c_e*E*S)/dENEESENS+(c_w*W*S-c_w*W*N)/dNSWNWWSW,  (c_e*E*ENE-c_e*E*ESE)/dENEESENS+2*c_s*E*S/dESSEWSSW-2*c_n*E*N/dNNEENNWW,
+        -c_w*W*WSW/dNSWNWWSW-2*c_s*SSW*S/dESSEWSSW,  (2*c_s*SSW*S-2*c_s*SSE*S)/dESSEWSSW+c_e*E*S/dENEESENS-c_w*W*S/dNSWNWWSW,  c_e*E*ESE/dENEESENS+2*c_s*SSE*S/dESSEWSSW,i,j);
+      }
+
+      if ((j==50 and i==80) or (i==50 and j==80)){
+        m_log->message(2,
+        "!!!!!IN SHELF: dxy=%f, dNSWNWWSW=%f, dNNWWNNWW=%f, dENEESENS=%f, dESSEWSSW=%f at %d,%d\n", dxy,dNSWNWWSW,dNNEENNWW,dENEESENS,dESSEWSSW,i,j);
+        m_log->message(2,
+        "!!!!!old terms, x: vi-1j+1=%f, vij+1=%f, vi+1j+1=%f, vi-1j=%f, vij=%f, vij+1=%f, vi-1j-1=%f, vij-1=%f, vi+1j-1=%f  at %d,%d\n",
+        c_w*W*WNW/d2+c_n*NNW*N/d4, (c_n*NNE*N-c_n*NNW*N)/d4+(c_w*W*N-c_e*E*N)/d2,  -c_e*E*ENE/d2-c_n*NNE*N/d4,
+        (c_w*W*WSW-c_w*W*WNW)/d2+(c_n*W*N-c_s*W*S)/d4,  (c_n*E*N-c_n*W*N-c_s*E*S+c_s*W*S)/d4+(c_e*E*N-c_w*W*N-c_e*E*S+c_w*W*S)/d2,  (c_e*E*ENE-c_e*E*ESE)/d2+(c_s*E*S-c_n*E*N)/d4,
+        -c_w*W*WSW/d2-c_s*SSW*S/d4,  (c_s*SSW*S-c_s*SSE*S)/d4+(c_e*E*S-c_w*W*S)/d2,  c_e*E*ESE/d2+c_s*SSE*S/d4, i,j);
+        m_log->message(2,
+        "!!!!!new terms, x: vi-1j+1=%f, vij+1=%f, vi+1j+1=%f, vi-1j=%f, vij=%f, vij+1=%f, vi-1j-1=%f, vij-1=%f, vi+1j-1=%f  at %d,%d\n",
+         2*c_w*W*WNW/dNSWNWWSW+c_n*NNW*N/dNNEENNWW,  (c_n*NNE*N-c_n*NNW*N)/dNNEENNWW+2*c_w*W*N/dNSWNWWSW-2*c_e*E*N/dENEESENS,  -2*c_e*E*ENE/dENEESENS-c_n*NNE*N/dNNEENNWW,
+        (2*c_w*W*WSW-2*c_w*W*WNW)/dNSWNWWSW+c_n*W*N/dNNEENNWW-c_s*W*S/dESSEWSSW,  (c_n*E*N-c_n*W*N)/dNNEENNWW+(c_s*W*S-c_s*E*S)/dESSEWSSW+(2*c_e*E*N-2*c_e*E*S)/dENEESENS+(2*c_w*W*S-2*c_w*W*N)/dNSWNWWSW,  (2*c_e*E*ENE-2*c_e*E*ESE)/dENEESENS+c_s*E*S/dESSEWSSW-c_n*E*N/dNNEENNWW,
+        -2*c_w*W*WSW/dNSWNWWSW-c_s*SSW*S/dESSEWSSW,  (c_s*SSW*S-c_s*SSE*S)/dESSEWSSW+2*c_e*E*S/dENEESENS-2*c_w*W*S/dNSWNWWSW,  2*c_e*E*ESE/dENEESENS+c_s*SSE*S/dESSEWSSW,i,j);
+        m_log->message(2,
+        "!!!!!old terms, y: ui-1j+1=%f, uij+1=%f, ui+1j+1=%f, ui-1j=%f, uij=%f, uij+1=%f, ui-1j-1=%f, uij-1=%f, ui+1j-1=%f  at %d,%d\n",
+         c_w*W*WNW/d4+c_n*NNW*N/d2,  (c_n*NNE*N-c_n*NNW*N)/d2+(c_w*W*N-c_e*E*N)/d4,  -c_e*E*ENE/d4-c_n*NNE*N/d2,
+        (c_w*W*WSW-c_w*W*WNW)/d4+(c_n*W*N-c_s*W*S)/d2,  (c_n*E*N-c_n*W*N-c_s*E*S+c_s*W*S)/d2+(c_e*E*N-c_w*W*N-c_e*E*S+c_w*W*S)/d4,  (c_e*E*ENE-c_e*E*ESE)/d4+(c_s*E*S-c_n*E*N)/d2,
+        -c_w*W*WSW/d4-c_s*SSW*S/d2,  (c_s*SSW*S-c_s*SSE*S)/d2+(c_e*E*S-c_w*W*S)/d4,  c_e*E*ESE/d4+c_s*SSE*S/d2,i,j);
+        m_log->message(2,
+        "!!!!!new terms, y: ui-1j+1=%f, uij+1=%f, ui+1j+1=%f, ui-1j=%f, uij=%f, uij+1=%f, ui-1j-1=%f, uij-1=%f, ui+1j-1=%f  at %d,%d\n",
+         c_w*W*WNW/dNSWNWWSW+2*c_n*NNW*N/dNNEENNWW,  (2*c_n*NNE*N-2*c_n*NNW*N)/dNNEENNWW+c_w*W*N/dNSWNWWSW-c_e*E*N/dENEESENS,  -c_e*E*ENE/dENEESENS-2*c_n*NNE*N/dNNEENNWW,
+        (c_w*W*WSW-c_w*W*WNW)/dNSWNWWSW+2*c_n*W*N/dNNEENNWW-2*c_s*W*S/dESSEWSSW,  (2*c_n*E*N-2*c_n*W*N)/dNNEENNWW+(2*c_s*W*S-2*c_s*E*S)/dESSEWSSW+(c_e*E*N-c_e*E*S)/dENEESENS+(c_w*W*S-c_w*W*N)/dNSWNWWSW,  (c_e*E*ENE-c_e*E*ESE)/dENEESENS+2*c_s*E*S/dESSEWSSW-2*c_n*E*N/dNNEENNWW,
+        -c_w*W*WSW/dNSWNWWSW-2*c_s*SSW*S/dESSEWSSW,  (2*c_s*SSW*S-2*c_s*SSE*S)/dESSEWSSW+c_e*E*S/dENEESENS-c_w*W*S/dNSWNWWSW,  c_e*E*ESE/dENEESENS+2*c_s*SSE*S/dESSEWSSW,i,j);
+      }
+      
+
+      /* Coefficients of the discretization of the first equation; u first, then v. NEW */ 
+      double eq1[] = {
+        0,  -c_n*N/dy2,  0,
+        -4*c_w*W/dx2,  (c_n*N+c_s*S)/dy2+(4*c_e*E+4*c_w*W)/dx2,  -4*c_e*E/dx2,
+        0,  -c_s*S/dy2,  0,
+        2*c_w*W*WNW/dNSWNWWSW+c_n*NNW*N/dNNEENNWW,  (c_n*NNE*N-c_n*NNW*N)/dNNEENNWW+2*c_w*W*N/dNSWNWWSW-2*c_e*E*N/dENEESENS,  -2*c_e*E*ENE/dENEESENS-c_n*NNE*N/dNNEENNWW,
+        (2*c_w*W*WSW-2*c_w*W*WNW)/dNSWNWWSW+c_n*W*N/dNNEENNWW-c_s*W*S/dESSEWSSW,  (c_n*E*N-c_n*W*N)/dNNEENNWW+(c_s*W*S-c_s*E*S)/dESSEWSSW+(2*c_e*E*N-2*c_e*E*S)/dENEESENS+(2*c_w*W*S-2*c_w*W*N)/dNSWNWWSW,  (2*c_e*E*ENE-2*c_e*E*ESE)/dENEESENS+c_s*E*S/dESSEWSSW-c_n*E*N/dNNEENNWW,
+        -2*c_w*W*WSW/dNSWNWWSW-c_s*SSW*S/dESSEWSSW,  (c_s*SSW*S-c_s*SSE*S)/dESSEWSSW+2*c_e*E*S/dENEESENS-2*c_w*W*S/dNSWNWWSW,  2*c_e*E*ESE/dENEESENS+c_s*SSE*S/dESSEWSSW,
+      }; 
+      /* Coefficients of the discretization of the first equation; u first, then v.  OLD
       double eq1[] = {
         0,  -c_n*N/dy2,  0,
         -4*c_w*W/dx2,  (c_n*N+c_s*S)/dy2+(4*c_e*E+4*c_w*W)/dx2,  -4*c_e*E/dx2,
@@ -703,9 +772,18 @@ void SSAFD::assemble_matrix(const Inputs &inputs,
         c_w*W*WNW/d2+c_n*NNW*N/d4,  (c_n*NNE*N-c_n*NNW*N)/d4+(c_w*W*N-c_e*E*N)/d2,  -c_e*E*ENE/d2-c_n*NNE*N/d4,
         (c_w*W*WSW-c_w*W*WNW)/d2+(c_n*W*N-c_s*W*S)/d4,  (c_n*E*N-c_n*W*N-c_s*E*S+c_s*W*S)/d4+(c_e*E*N-c_w*W*N-c_e*E*S+c_w*W*S)/d2,  (c_e*E*ENE-c_e*E*ESE)/d2+(c_s*E*S-c_n*E*N)/d4,
         -c_w*W*WSW/d2-c_s*SSW*S/d4,  (c_s*SSW*S-c_s*SSE*S)/d4+(c_e*E*S-c_w*W*S)/d2,  c_e*E*ESE/d2+c_s*SSE*S/d4,
-      };
+      }; */
 
-      /* Coefficients of the discretization of the second equation; u first, then v. */
+      /* Coefficients of the discretization of the second equation; u first, then v. NEW */ 
+      double eq2[] = {
+        c_w*W*WNW/dNSWNWWSW+2*c_n*NNW*N/dNNEENNWW,  (2*c_n*NNE*N-2*c_n*NNW*N)/dNNEENNWW+c_w*W*N/dNSWNWWSW-c_e*E*N/dENEESENS,  -c_e*E*ENE/dENEESENS-2*c_n*NNE*N/dNNEENNWW,
+        (c_w*W*WSW-c_w*W*WNW)/dNSWNWWSW+2*c_n*W*N/dNNEENNWW-2*c_s*W*S/dESSEWSSW,  (2*c_n*E*N-2*c_n*W*N)/dNNEENNWW+(2*c_s*W*S-2*c_s*E*S)/dESSEWSSW+(c_e*E*N-c_e*E*S)/dENEESENS+(c_w*W*S-c_w*W*N)/dNSWNWWSW,  (c_e*E*ENE-c_e*E*ESE)/dENEESENS+2*c_s*E*S/dESSEWSSW-2*c_n*E*N/dNNEENNWW,
+        -c_w*W*WSW/dNSWNWWSW-2*c_s*SSW*S/dESSEWSSW,  (2*c_s*SSW*S-2*c_s*SSE*S)/dESSEWSSW+c_e*E*S/dENEESENS-c_w*W*S/dNSWNWWSW,  c_e*E*ESE/dENEESENS+2*c_s*SSE*S/dESSEWSSW,
+        0,  -4*c_n*N/dy2,  0,
+        -c_w*W/dx2,  (4*c_n*N+4*c_s*S)/dy2+(c_e*E+c_w*W)/dx2,  -c_e*E/dx2,
+        0,  -4*c_s*S/dy2,  0,
+      };
+      /* Coefficients of the discretization of the second equation; u first, then v. OLD  
       double eq2[] = {
         c_w*W*WNW/d4+c_n*NNW*N/d2,  (c_n*NNE*N-c_n*NNW*N)/d2+(c_w*W*N-c_e*E*N)/d4,  -c_e*E*ENE/d4-c_n*NNE*N/d2,
         (c_w*W*WSW-c_w*W*WNW)/d4+(c_n*W*N-c_s*W*S)/d2,  (c_n*E*N-c_n*W*N-c_s*E*S+c_s*W*S)/d2+(c_e*E*N-c_w*W*N-c_e*E*S+c_w*W*S)/d4,  (c_e*E*ENE-c_e*E*ESE)/d4+(c_s*E*S-c_n*E*N)/d2,
@@ -713,7 +791,8 @@ void SSAFD::assemble_matrix(const Inputs &inputs,
         0,  -4*c_n*N/dy2,  0,
         -c_w*W/dx2,  (4*c_n*N+4*c_s*S)/dy2+(c_e*E+c_w*W)/dx2,  -c_e*E/dx2,
         0,  -4*c_s*S/dy2,  0,
-      };
+      };*/ 
+
 
       /* i indices */
       const int I[] = {
