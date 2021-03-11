@@ -179,7 +179,7 @@ double PicoPhysics::T_star(double salinity, double temperature, double pressure)
   // be ice, but we are in the ocean. This should not occur because
   // set_ocean_input_fields(...) sets too cold temperatures to pressure melting point +
   // 0.001
-  return std::min(T_s, 0.0);
+  return T_s; //std::min(T_s, 0.0);
 }
 
 //! calculate p coefficent for solving the quadratic temperature equation
